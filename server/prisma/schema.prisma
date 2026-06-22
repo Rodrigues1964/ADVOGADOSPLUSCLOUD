@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id                  String         @id @default(uuid())
+  name                String
+  slug                String         @unique
+  plan_type           String         // free, standard, premium
+  subscription_status String         // trialing, active, past_due, canceled
+  status              String         @default("active") // active, blocked
+  billing_email       String?
+  created_at          DateTime       @default(now())
+  updated_at          DateTime       @updatedAt
+
+  members             TenantMember[]
+  clients             Client[]
+  cases               Case[]
+  tasks               Task[]
+  hearings            Hearing[]
+  financials          FinancialTransaction[]
+  documents           Document[]
+  whatsapp_logs       WhatsAppLog[]
+}
+
+model Profile {
+  id            String         @id @default(uuid())
+  first_name    String
+  last_name     String
+  email         String         @unique
+  phone         String?
+  avatar_url    String?
+  password_hash String
+  theme         String         @default("dark")
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+
+  memberships   TenantMember[]
+  tasks         Task[]
+  cases         Case[]
+  documents     Document[]
+}
+
+model TenantMember {
+  id         String   @id @default(uuid())
+  tenant_id  String
+  profile_id String
+  role       String   // owner, admin, lawyer, assistant, client, master
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  tenant     Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  profile    Profile  @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, profile_id])
+}
+
+model Client {
+  id                   String   @id @default(uuid())
+  tenant_id            String
+  type                 String   // individual, corporate
+  name                 String
+  email                String?
+  phone                String?
+  document             String?
+  rg_ie                String?
+  address_street       String?
+  address_number       String?
+  address_complement   String?
+  address_neighborhood String?
+  address_city         String?
+  address_state        String?
+  address_zipcode      String?
+  notes                String?  @db.Text
+  status               String   @default("active")
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  tenant               Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  cases                Case[]
+  financials           FinancialTransaction[]
+  whatsapp_logs        WhatsAppLog[]
+}
+
+model Case {
+  id                    String   @id @default(uuid())
+  tenant_id             String
+  client_id             String?
+  title                 String
+  number                String?
+  court                 String?
+  instance              String?
+  distribution_date     DateTime?
+  value                 Decimal?
+  status                String   // active, suspended, archived, settled
+  description           String?  @db.Text
+  responsible_lawyer_id String?
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+
+  tenant                Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  client                Client?  @relation(fields: [client_id], references: [id], onDelete: SetNull)
+  responsible_lawyer    Profile? @relation(fields: [responsible_lawyer_id], references: [id], onDelete: SetNull)
+  
+  tasks                 Task[]
+  hearings              Hearing[]
+  financials            FinancialTransaction[]
+  documents             Document[]
+}
+
+model Task {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  case_id     String?
+  title       String
+  description String?  @db.Text
+  due_date    DateTime?
+  status      String   // todo, in_progress, completed, waiting
+  priority    String   // low, medium, high, urgent
+  assigned_to String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  case        Case?    @relation(fields: [case_id], references: [id], onDelete: SetNull)
+  assignee    Profile? @relation(fields: [assigned_to], references: [id], onDelete: SetNull)
+}
+
+model Hearing {
+  id         String   @id @default(uuid())
+  tenant_id  String
+  case_id    String?
+  date       DateTime
+  location   String
+  status     String   // scheduled, completed, canceled
+  notes      String?  @db.Text
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  tenant     Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  case       Case?    @relation(fields: [case_id], references: [id], onDelete: SetNull)
+}
+
+model Document {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  case_id     String?
+  name        String
+  file_path   String
+  file_size   Int?
+  mime_type   String?
+  uploaded_by String?
+  created_at  DateTime @default(now())
+
+  tenant      Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  case        Case?    @relation(fields: [case_id], references: [id], onDelete: SetNull)
+  uploader    Profile? @relation(fields: [uploaded_by], references: [id], onDelete: SetNull)
+}
+
+model FinancialTransaction {
+  id           String   @id @default(uuid())
+  tenant_id    String
+  case_id      String?
+  client_id    String?
+  type         String   // income, expense
+  category     String   // honorarios, custas, despesas, aluguel, salarios, outros
+  amount       Decimal
+  due_date     DateTime
+  payment_date DateTime?
+  status       String   // pending, paid, overdue, canceled
+  description  String?  @db.Text
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  tenant       Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  case         Case?    @relation(fields: [case_id], references: [id], onDelete: SetNull)
+  client       Client?  @relation(fields: [client_id], references: [id], onDelete: SetNull)
+}
+
+model WhatsAppLog {
+  id           String   @id @default(uuid())
+  tenant_id    String
+  client_id    String?
+  phone        String
+  message_text String   @db.Text
+  status       String   // pending, sent, failed
+  sent_at      DateTime?
+  created_at   DateTime @default(now())
+
+  tenant       Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  client       Client?  @relation(fields: [client_id], references: [id], onDelete: SetNull)
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  timestamp  DateTime @default(now())
+  user_id    String
+  tenant_id  String?
+  action     String
+  resource   String
+  details    String   @db.Text
+  ip         String
+  user_agent String?
+}
+
+model SmtpConfig {
+  id         String   @id @default(uuid())
+  tenant_id  String?
+  host       String
+  port       Int
+  user       String
+  password   String
+  secure     Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model EmailQueue {
+  id         String   @id @default(uuid())
+  tenant_id  String?
+  to_email   String
+  subject    String
+  body       String   @db.Text
+  status     String   @default("pending")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model EmailLog {
+  id         String   @id @default(uuid())
+  tenant_id  String?
+  to_email   String
+  subject    String
+  status     String
+  error_msg  String?  @db.Text
+  sent_at    DateTime @default(now())
+}
+
+model Notification {
+  id         String   @id @default(uuid())
+  tenant_id  String?
+  user_id    String?
+  title      String
+  message    String   @db.Text
+  is_read    Boolean  @default(false)
+  created_at DateTime @default(now())
+}
+
+model Plan {
+  id          String   @id @default(uuid())
+  name        String
+  description String?  @db.Text
+  price       Decimal  @default(0.00)
+  max_users   Int      @default(1)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  licenses    License[]
+}
+
+model License {
+  id         String   @id @default(uuid())
+  tenant_id  String
+  plan_id    String
+  start_date DateTime
+  end_date   DateTime
+  status     String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  plan       Plan     @relation(fields: [plan_id], references: [id])
+}
+
+model SystemConfig {
+  id         String   @id @default(uuid())
+  key        String   @unique
+  value      String   @db.Text
+  updated_at DateTime @updatedAt
+}
+
+model BackupRecord {
+  id         String   @id @default(uuid())
+  date       DateTime @default(now())
+  size_bytes BigInt
+  file_path  String
+  status     String
+  user_id    String?
+}

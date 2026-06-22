@@ -1,0 +1,244 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  master
+  admin
+  usuario
+}
+
+enum PlanType {
+  free
+  standard
+  premium
+}
+
+enum SubscriptionStatus {
+  active
+  past_due
+  suspended
+  canceled
+}
+
+enum ProcessStatus {
+  active
+  suspended
+  archived
+  settled
+}
+
+enum HearingStatus {
+  scheduled
+  completed
+  canceled
+}
+
+enum FinancialType {
+  income
+  expense
+}
+
+enum FinancialCategory {
+  honorarios
+  custas
+  despesas
+  aluguel
+  salarios
+  outros
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  overdue
+  canceled
+}
+
+enum UserType {
+  individual
+  corporate
+}
+
+model Office {
+  id                  String   @id @default(uuid())
+  name                String
+  document            String   @unique
+  responsible_name    String
+  email               String   @unique
+  phone               String?
+  address             String?
+  plan_type           PlanType @default(free)
+  subscription_status SubscriptionStatus @default(active)
+  monthly_value       Decimal   @default(0.00)
+  due_date            DateTime?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
+
+  users               User[]
+  clients             Client[]
+  processes           Process[]
+  hearings            Hearing[]
+  financials          Financial[]
+  subscriptions       Subscription[]
+  payments            Payment[]
+  auditLogs           AuditLog[]
+  settings            Setting[]
+}
+
+model User {
+  id          String   @id @default(uuid())
+  first_name  String
+  last_name   String
+  email       String   @unique
+  password_hash String
+  phone       String?
+  avatar_url  String?
+  role        Role     @default(usuario)
+  office_id   String?
+  office      Office?  @relation(fields: [office_id], references: [id], onDelete: SetNull)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  // Relations
+  processes   Process[] @relation("ResponsibleLawyer")
+}
+
+model Client {
+  id               String   @id @default(uuid())
+  office_id        String
+  office           Office   @relation(fields: [office_id], references: [id], onDelete: Cascade)
+  type             UserType
+  name             String
+  email            String?
+  phone            String?
+  document         String?
+  rg_ie            String?
+  address_street   String?
+  address_number   String?
+  address_complement String?
+  address_neighborhood String?
+  address_city     String?
+  address_state    String?
+  address_zipcode  String?
+  notes            String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  processes        Process[]
+}
+
+model Process {
+  id                 String   @id @default(uuid())
+  office_id          String
+  office             Office   @relation(fields: [office_id], references: [id], onDelete: Cascade)
+  client_id          String?
+  client             Client?  @relation(fields: [client_id], references: [id], onDelete: SetNull)
+  title              String
+  number             String
+  court              String
+  instance           String
+  distribution_date  DateTime?
+  value              Decimal  @default(0.00)
+  status             ProcessStatus @default(active)
+  description        String?
+  responsible_lawyer_id String?
+  responsibleLawyer  User?    @relation("ResponsibleLawyer", fields: [responsible_lawyer_id], references: [id], onDelete: SetNull)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+
+  hearings           Hearing[]
+  financials         Financial[]
+}
+
+model Hearing {
+  id          String   @id @default(uuid())
+  office_id   String
+  office      Office   @relation(fields: [office_id], references: [id], onDelete: Cascade)
+  process_id  String?
+  process     Process? @relation(fields: [process_id], references: [id], onDelete: Cascade)
+  date        DateTime
+  location    String
+  status      HearingStatus @default(scheduled)
+  notes       String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+}
+
+model Financial {
+  id          String   @id @default(uuid())
+  office_id   String
+  office      Office   @relation(fields: [office_id], references: [id], onDelete: Cascade)
+  process_id  String?
+  process     Process? @relation(fields: [process_id], references: [id], onDelete: SetNull)
+  client_id   String?
+  client      Client?  @relation(fields: [client_id], references: [id], onDelete: SetNull)
+  type        FinancialType
+  category    FinancialCategory
+  amount      Decimal
+  due_date    DateTime
+  payment_date DateTime?
+  status      PaymentStatus @default(pending)
+  description String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+}
+
+model Subscription {
+  id           String   @id @default(uuid())
+  office_id    String
+  office       Office   @relation(fields: [office_id], references: [id], onDelete: Cascade)
+  plan_type    PlanType
+  billing_cycle String
+  amount       Decimal
+  start_date   DateTime
+  end_date     DateTime
+  status       SubscriptionStatus @default(active)
+  created_at   DateTime @default(now())
+
+  payments     Payment[]
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  office_id         String
+  office            Office   @relation(fields: [office_id], references: [id], onDelete: Cascade)
+  subscription_id   String
+  subscription      Subscription @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
+  amount            Decimal
+  due_date          DateTime
+  payment_date      DateTime?
+  status            PaymentStatus @default(pending)
+  description       String?
+  created_at        DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  timestamp  DateTime @default(now())
+  user_email String
+  user_role  Role
+  office_id  String?
+  office     Office?  @relation(fields: [office_id], references: [id], onDelete: SetNull)
+  ip         String
+  operation  String
+}
+
+model Setting {
+  id         String   @id @default(uuid())
+  office_id  String
+  office     Office   @relation(fields: [office_id], references: [id], onDelete: Cascade)
+  key_name   String
+  value_data String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([office_id, key_name])
+}
+
+@@index([office_id])
