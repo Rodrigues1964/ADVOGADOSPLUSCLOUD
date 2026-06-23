@@ -2,6 +2,10 @@
 // Implementa checagem de whitelist de extensões/MIME, limite de tamanho,
 // sanitização de nomes (path traversal) e validação binária de magic bytes.
 
+// Importa o módulo 'path' para manipulação segura de nomes de arquivo
+import path from 'path';
+import { Readable } from 'stream';
+
 export interface UploadValidationResult {
   isValid: boolean;
   error?: string;
@@ -21,48 +25,72 @@ const ALLOWED_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 ];
 
+// Mapeamento de assinaturas binárias (Magic Bytes) para tipos de arquivo
+const MAGIC_BYTES_SIGNATURES = new Map<string, { mime: string, signature: string }>([
+  ['.pdf',   { mime: 'application/pdf', signature: '25504446' }],
+  ['.png',   { mime: 'image/png', signature: '89504E47' }],
+  ['.jpg',   { mime: 'image/jpeg', signature: 'FFD8FF' }],
+  ['.jpeg',  { mime: 'image/jpeg', signature: 'FFD8FF' }],
+  ['.docx',  { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', signature: '504B0304' }],
+  ['.xlsx',  { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', signature: '504B0304' }],
+]);
+
 // Sanitizador de Nome do Arquivo para evitar Path Traversal e injeções
 export function sanitizeFileName(name: string): string {
-  // 1. Extrair apenas o nome base (ignorar caminhos se houver)
-  const baseName = name.replace(/^.*[\\/]/, '');
+  // 1. [SEGURO] Usa path.basename para extrair o nome do arquivo, prevenindo Path Traversal.
+  const baseName = path.basename(name);
   
-  // 2. Extrair a extensão
-  const lastDotIdx = baseName.lastIndexOf('.');
-  const ext = lastDotIdx !== -1 ? baseName.substring(lastDotIdx) : '';
-  const nameWithoutExt = lastDotIdx !== -1 ? baseName.substring(0, lastDotIdx) : baseName;
+  // 2. Extrai a extensão de forma segura.
+  const ext = path.extname(baseName).toLowerCase();
+  const nameWithoutExt = path.basename(baseName, ext);
   
-  // 3. Sanitizar o corpo do nome: remover caracteres de travessia (..), barras (/ \),
-  // caracteres não alfanuméricos e substituir espaços por sublinhados
+  // 3. Sanitiza o corpo do nome: remove caracteres não permitidos e normaliza espaços/sublinhados.
   const cleanName = nameWithoutExt
-    .replace(/\.\./g, '') // Remover travessia explícita
-    .replace(/[\\/]/g, '') // Remover barras
-    .replace(/[^a-zA-Z0-9_-]/g, '_') // Substituir caracteres especiais por sublinhados
-    .replace(/_+/g, '_'); // Juntar múltiplos sublinhados
+    .replace(/[^a-zA-Z0-9-]/g, '_') // Permite apenas alfanuméricos e hífen, o resto vira _
+    .replace(/_+/g, '_') // Junta múltiplos sublinhados
+    .replace(/^_|_$/g, ''); // Remove sublinhados no início ou fim
     
-  return `${cleanName}${ext.toLowerCase()}`;
+  // Garante que o nome não fique vazio após a sanitização.
+  const finalName = cleanName || 'arquivo_sem_nome';
+
+  return `${finalName}${ext}`;
 }
 
 // Leitor assíncrono dos primeiros bytes do arquivo para Magic Numbers
 async function getFileHeaderHex(file: File, byteCount: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (e.target?.result instanceof ArrayBuffer) {
-        const bytes = new Uint8Array(e.target.result);
-        const hex = Array.from(bytes)
-          .map(b => b.toString(16).padStart(2, '0').toUpperCase())
-          .join('');
-        resolve(hex);
-      } else {
-        reject(new Error('Erro ao ler bytes do cabeçalho do arquivo.'));
-      }
-    };
-    reader.onerror = () => reject(reader.error);
-    
-    // Ler apenas a porção inicial (slice) para otimizar desempenho
-    const blob = file.slice(0, byteCount);
-    reader.readAsArrayBuffer(blob);
-  });
+  // [SEGURO] Usa file.stream() que é mais adequado e seguro para ambientes Node.js
+  if (!file.stream) {
+    throw new Error('Ambiente não suporta file.stream().');
+  }
+
+  const stream = file.stream();
+  const reader = stream.getReader();
+  let bytesRead = 0;
+  const chunks: Uint8Array[] = [];
+
+  while (bytesRead < byteCount) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    bytesRead += value.length;
+  }
+
+  reader.releaseLock();
+
+  if (chunks.length === 0) {
+    return '';
+  }
+
+  // Concatena os chunks e pega apenas os bytes necessários
+  const buffer = new Uint8Array(bytesRead);
+  let offset = 0;
+  for (const chunk of chunks) {
+    buffer.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  const headerBytes = buffer.slice(0, byteCount);
+  return Array.from(headerBytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join('');
 }
 
 // Validador Principal do Upload de Arquivo
@@ -100,27 +128,21 @@ export async function validateUploadedFile(file: File): Promise<UploadValidation
     // Ler primeiros 8 bytes
     const headerHex = await getFileHeaderHex(file, 8);
 
-    // Bloqueio explícito de executáveis PE (iniciam com "MZ" - 4D5A em Hex)
+    // [SEGURO] Bloqueio explícito de executáveis PE (iniciam com "MZ" - 4D5A em Hex)
     if (headerHex.startsWith('4D5A')) {
       return { isValid: false, error: 'Upload bloqueado: Arquivos executáveis não são permitidos por motivos de segurança.' };
     }
 
-    // Validar assinaturas específicas de tipo de arquivo
-    if (fileExt === '.pdf' && !headerHex.startsWith('25504446')) {
-      return { isValid: false, error: 'Falsificação de tipo de arquivo detectada: O arquivo afirma ser um PDF, mas não possui a assinatura binária de um PDF.' };
-    }
-
-    if (fileExt === '.png' && !headerHex.startsWith('89504E47')) {
-      return { isValid: false, error: 'Falsificação de tipo de arquivo detectada: O arquivo afirma ser um PNG, mas não possui a assinatura binária de um PNG.' };
-    }
-
-    if ((fileExt === '.jpg' || fileExt === '.jpeg') && !headerHex.startsWith('FFD8FF')) {
-      return { isValid: false, error: 'Falsificação de tipo de arquivo detectada: O arquivo afirma ser um JPEG, mas não possui a assinatura binária de uma imagem JPEG.' };
-    }
-
-    // DOCX e XLSX são arquivos compactados ZIP em seu formato (iniciam com "PK" - 504B0304)
-    if ((fileExt === '.docx' || fileExt === '.xlsx') && !headerHex.startsWith('504B0304')) {
-      return { isValid: false, error: 'Falsificação de tipo de arquivo detectada: O arquivo afirma ser um documento do Office, mas seu cabeçalho binário está inválido.' };
+    // [SEGURO] Validação centralizada de Magic Bytes e consistência com MIME Type
+    const expectedSignature = MAGIC_BYTES_SIGNATURES.get(fileExt);
+    if (expectedSignature) {
+      if (!headerHex.startsWith(expectedSignature.signature)) {
+        return { isValid: false, error: `Falsificação de tipo de arquivo detectada: O arquivo se diz um '${fileExt}', mas seu conteúdo binário não corresponde.` };
+      }
+      // Checagem de consistência entre MIME type real e o esperado
+      if (file.type !== expectedSignature.mime) {
+        return { isValid: false, error: `Inconsistência de tipo de arquivo: O MIME type declarado (${file.type}) não corresponde ao tipo esperado para a extensão '${fileExt}'.` };
+      }
     }
   } catch (err) {
     return { 
