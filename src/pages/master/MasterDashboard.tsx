@@ -56,24 +56,18 @@ export const MasterDashboard: React.FC = () => {
           value={stats.active_clients} 
           icon={Building2} 
           color="bg-blue-500/80 shadow-blue-500/20 shadow-lg"
-          trend="up"
-          trendValue="+12%"
         />
         <StatCard 
           title="Escritórios Bloqueados" 
           value={stats.blocked_clients} 
           icon={AlertTriangle} 
           color="bg-red-500/80 shadow-red-500/20 shadow-lg"
-          trend="down"
-          trendValue="-2%"
         />
         <StatCard 
           title="Receita Mensal (MRR)" 
           value={`R$ ${(stats.monthly_revenue).toLocaleString('pt-BR')}`} 
           icon={CreditCard} 
           color="bg-emerald-500/80 shadow-emerald-500/20 shadow-lg"
-          trend="up"
-          trendValue="+5.4%"
         />
         <StatCard 
           title="Total de Usuários Globais" 
@@ -85,21 +79,13 @@ export const MasterDashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg">
-          <h3 className="text-white font-bold mb-4 flex items-center gap-2">
-            <Server size={18} className="text-rose-500" /> 
-            Consumo de Infraestrutura Mock (Geral)
+          <h3 className="text-sm font-bold flex items-center gap-2 text-white">
+            <Server size={18} className="text-rose-500" />
+            Consumo de Infraestrutura
           </h3>
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-slate-400">Armazenamento S3 (Documentos)</span>
-                <span className="text-white font-bold">450 GB / 2 TB</span>
-              </div>
-              <div className="w-full bg-slate-800 rounded-full h-2">
-                <div className="bg-blue-500 h-2 rounded-full" style={{ width: '22%' }}></div>
-              </div>
-            </div>
-            <div>
+  
+
+
               <div className="flex justify-between text-xs mb-1">
                 <span className="text-slate-400">Banco de Dados (Linhas Globais)</span>
                 <span className="text-white font-bold">{stats.total_cases + stats.total_users} de 1.000.000</span>
@@ -109,21 +95,14 @@ export const MasterDashboard: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+</div>
+        
 
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-lg">
           <h3 className="text-white font-bold mb-4">Avisos do Sistema</h3>
-          <ul className="space-y-3">
-            <li className="flex gap-3 text-sm">
-              <div className="mt-0.5 text-amber-500"><AlertTriangle size={16} /></div>
-              <div>
-                <p className="text-slate-200 font-bold">Backup mensal não concluído</p>
-                <p className="text-slate-500 text-xs">A rotina de backup em cold-storage falhou ontem. Necessário retentar.</p>
-              </div>
-            </li>
-          </ul>
+          <p className="text-xs text-muted-foreground">Nenhum registro cadastrado</p>
         </div>
       </div>
-    </div>
+</div>
   )
 }

@@ -224,13 +224,13 @@ export interface HealthStatus {
 }
 
 export function performHealthCheck(): HealthStatus {
-  // 1. Measure pseudo DB latency
-  const dbLatency = 15;
-  
-  // 2. Storage capacity mock
-  const usedBytes = 10 * 1024;
-  const capacityBytes = 5 * 1024 * 1024;
-  const usagePercent = Math.round((usedBytes / capacityBytes) * 10000) / 100;
+  // 1. Measure pseudo DB latency (mock disabled)
+  const dbLatency = null;
+
+  // 2. Storage capacity (mock disabled)
+  const usedBytes = null;
+  const capacityBytes = null;
+  const usagePercent = null;
   
   // 3. Get system memory if supported by browser
   let memoryUsedMB = 0;

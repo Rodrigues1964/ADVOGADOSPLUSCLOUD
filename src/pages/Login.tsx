@@ -2,8 +2,10 @@ import React, { useState } from 'react'
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../lib/telemetry'
+import { useNavigate } from 'react-router-dom'
 
 export const Login: React.FC = () => {
+  const navigate = useNavigate();
   const { signIn } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState(import.meta.env.PROD ? '' : 'password123')
